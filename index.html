@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WebOS Chat</title>
   <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./app.mjs"></script>
+  <script type="module" src="./start.mjs"></script>
 </head>
 <body>
   <header class="top">
@@ -41,6 +41,7 @@
         <div id="messages" role="log" aria-label="Messages" aria-live="polite"></div>
         <form id="compose" hidden>
           <label for="message">Message</label>
+          <p id="delivery" aria-live="polite"></p>
           <div><input id="message" name="message" maxlength="2000" required autocomplete="off"><button type="submit">Send</button></div>
         </form>
       </section>

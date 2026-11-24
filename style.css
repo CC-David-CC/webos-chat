@@ -1,4 +1,4 @@
-:root {
+:root, :host {
   font-family: "Segoe UI", system-ui, sans-serif;
   color: #172837;
   background: #f5f7fa;
@@ -102,3 +102,9 @@ time { color: var(--muted); font-size: .76rem; }
 
 #new-direct div { display: grid; }
 #new-direct button { justify-self: start; }
+
+#delivery { margin: 0 0 .35rem; color: var(--muted); font-size: .82rem; }
+#delivery:empty { display: none; }
+:host { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+:host main, :host .chat { flex: 1; height: 100%; min-height: 0; }
+:host main { overflow: auto; }

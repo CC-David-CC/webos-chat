@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebOS Chat</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>WebOS Chat</h1>
+    <label class="account">Demo account <select id="account"></select></label>
+  </header>
+  <main>
+    <p id="error" role="alert" hidden></p>
+    <section id="signed-out" class="notice">
+      <h2>Sign in to use Chat</h2>
+      <p>Choose a simulated registered account from the menu above.</p>
+    </section>
+    <section id="chat" class="chat" aria-label="Conversations" hidden>
+      <aside>
+        <section>
+          <h2>Channels</h2>
+          <nav id="channels" aria-label="Channels"></nav>
+        </section>
+        <section>
+          <h2>Direct messages</h2>
+          <nav id="directs" aria-label="Direct messages"></nav>
+          <form id="new-direct">
+            <label for="recipient">Message someone</label>
+            <div><select id="recipient" required></select><button type="submit">Open DM</button></div>
+          </form>
+        </section>
+      </aside>
+      <section class="conversation" aria-label="Selected conversation">
+        <header>
+          <h2 id="name">Conversations</h2>
+          <p id="members"></p>
+        </header>
+        <div id="messages" role="log" aria-label="Messages" aria-live="polite"></div>
+        <form id="compose" hidden>
+          <label for="message">Message</label>
+          <div><input id="message" name="message" maxlength="2000" required autocomplete="off"><button type="submit">Send</button></div>
+        </form>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

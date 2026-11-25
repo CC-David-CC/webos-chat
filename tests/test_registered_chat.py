@@ -105,6 +105,26 @@ class RegisteredChatTest(unittest.TestCase):
         self.assertTrue(newer['more'])
         self.assertEqual([m['id'] for m in newer['messages']], ids[1:51])
 
+    def test_live_state_tracks_related_accounts_leaving_the_directory(self):
+        self.send(self.direct())
+        revision, peers = self.chat.live_state(self.alex.sub, self.alex.sid)
+        self.assertEqual(peers, (self.casey.sub,))
+        with sqlite3.connect(self.accounts_db) as db:
+            db.execute('UPDATE account_policy SET disabled=1 WHERE subject=?', (self.jordan.sub,))
+        self.assertEqual(self.chat.live_state(self.alex.sub, self.alex.sid), (revision, peers))
+
+        with sqlite3.connect(self.accounts_db) as db:
+            db.execute('UPDATE account_policy SET disabled=1 WHERE subject=?', (self.casey.sub,))
+        self.assertEqual(self.chat.live_state(self.alex.sub, self.alex.sid), (revision, ()))
+        with self.assertRaises(Denied):
+            self.chat.live_state(self.casey.sub, self.casey.sid)
+
+        with sqlite3.connect(self.accounts_db) as db:
+            db.execute('DELETE FROM accounts WHERE subject=?', (self.casey.sub,))
+        replacement = self.register('casey')
+        self.assertEqual(self.chat.live_state(self.alex.sub, self.alex.sid), (revision, ()))
+        self.assertEqual(self.request(replacement, 'snapshot')['conversations'], [])
+
     def test_revoked_session_and_reused_username(self):
         conversation = self.direct()
         self.send(conversation)

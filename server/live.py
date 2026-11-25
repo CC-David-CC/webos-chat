@@ -78,18 +78,22 @@ class LiveChat:
             'X-Content-Type-Options': 'nosniff',
         })
         try:
-            revision = await self.revision(ticket)
+            state = await self.stream_state(ticket)
             await response.prepare(request)
             last_sent = 0
             previous = None
+            sequence = 0
             while not self.stopping and request.transport and not request.transport.is_closing():
                 now = time.monotonic()
-                if previous != revision or now - last_sent >= 12:
+                changed = previous != state
+                if changed:
+                    sequence += 1
+                if changed or now - last_sent >= 12:
                     async with asyncio.timeout(5):
-                        await response.write(f'{revision}\n'.encode('ascii'))
-                    previous, last_sent = revision, now
+                        await response.write(f'{sequence}\n'.encode('ascii'))
+                    previous, last_sent = state, now
                 await asyncio.sleep(1.5)
-                revision = await self.revision(ticket)
+                state = await self.stream_state(ticket)
         except Denied:
             if not response.prepared:
                 raise web.HTTPForbidden() from None
@@ -101,5 +105,5 @@ class LiveChat:
                 del self.streams[ticket.subject]
         return response
 
-    async def revision(self, ticket):
-        return await asyncio.to_thread(self.store.live_revision, ticket.subject, ticket.session)
+    async def stream_state(self, ticket):
+        return await asyncio.to_thread(self.store.live_state, ticket.subject, ticket.session)

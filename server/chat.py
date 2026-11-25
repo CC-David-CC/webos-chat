@@ -170,6 +170,23 @@ class ChatStore:
             self.check_session(db, subject, session)
             return self.revision(db, subject)
 
+    def live_state(self, subject, session):
+        with self.connection() as db:
+            self.check_session(db, subject, session)
+            # Account maintenance changes the directory without writing to Chat's revision table.
+            peers = db.execute(
+                '''WITH related(subject) AS (
+                       SELECT second FROM friendships WHERE first = :subject
+                       UNION SELECT first FROM friendships WHERE second = :subject
+                       UNION SELECT CASE WHEN d.first = :subject THEN d.second ELSE d.first END
+                       FROM members m JOIN direct_pairs d USING (conversation)
+                       WHERE m.subject = :subject
+                   )
+                   SELECT p.subject FROM related r JOIN people p USING (subject)
+                   ORDER BY p.subject''', {'subject': subject},
+            )
+            return self.revision(db, subject), tuple(row['subject'] for row in peers)
+
     @staticmethod
     def touch(db, *subjects):
         db.executemany(

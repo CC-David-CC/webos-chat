@@ -215,7 +215,11 @@ function start(view, transport, doc, signal) {
 
   function renderHistory(scroll) {
     const current = thread();
-    if (!current) return;
+    if (!current) {
+      history.replaceChildren();
+      older.hidden = true;
+      return;
+    }
     const rows = loaded.map(row => {
       const entry = text('article', '', 'message');
       const header = doc.createElement('header');
@@ -298,9 +302,24 @@ function start(view, transport, doc, signal) {
         state = await transport.request('snapshot');
         identity.textContent = label(state.me);
         if (!profile.open) input.value = state.me.displayName === state.me.username ? '' : state.me.displayName;
-        if (selected && !thread()) await openThread(null);
-        if (JSON.stringify(previous?.conversations) !== JSON.stringify(state.conversations)) renderSidebar();
-        if (!previous || JSON.stringify(previous.contacts) !== JSON.stringify(state.contacts)) renderDirectory();
+        let resultsChanged = false;
+        const threadsChanged = JSON.stringify(previous?.conversations) !== JSON.stringify(state.conversations);
+        if (threadsChanged && results && previous) {
+          const current = new Set(state.conversations.map(item => item.id));
+          const departed = new Set(previous.conversations.filter(item => !current.has(item.id)).map(item => item.peer.subject));
+          const visible = results.filter(person => !departed.has(person.subject));
+          resultsChanged = visible.length !== results.length;
+          results = visible;
+        }
+        if (selected && !thread()) {
+          const hadFocus = conversation.contains(view.getRootNode().activeElement);
+          await openThread(null);
+          if (hadFocus) find.focus();
+          report('This conversation is no longer available.');
+        } else if (threadsChanged) {
+          renderSidebar();
+        }
+        if (resultsChanged || !previous || JSON.stringify(previous.contacts) !== JSON.stringify(state.contacts)) renderDirectory();
         renderConversation();
         if (selected && !loading) await readNew(selected, selectionGeneration);
       }

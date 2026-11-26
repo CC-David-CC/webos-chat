@@ -40,7 +40,10 @@ const VIEW = `
       </section>
     </section>
     <section class="conversation" hidden>
-      <header><h2 id="conversation-title"></h2><p id="members"></p></header>
+      <header>
+        <button id="back" type="button">Back</button>
+        <div><h2 id="conversation-title"></h2><p id="members"></p></div>
+      </header>
       <div id="messages" role="log" aria-label="Messages" tabindex="0">
         <button id="older" type="button" hidden>Load older messages</button>
         <div id="history"></div>
@@ -83,6 +86,7 @@ function start(view, transport, doc, signal) {
   const by = selector => view.querySelector(selector);
   const on = (node, event, fn) => node.addEventListener(event, fn, { signal });
   const find = by('#people');
+  const back = by('#back');
   const notice = by('#notice');
   const profile = by('#profile');
   const identity = by('#identity');
@@ -342,6 +346,10 @@ function start(view, transport, doc, signal) {
   }
 
   on(find, 'click', run(() => state && openThread(null)));
+  on(back, 'click', run(async () => {
+    await openThread(null);
+    find.focus();
+  }));
   on(by('#profile-form'), 'submit', run(async () => {
     await transport.request('display-name', { name: input.value });
     profile.open = false;

@@ -294,8 +294,10 @@ function start(view, transport, doc, signal) {
     renderConversation();
     renderHistory(true);
     if (id && thread()) {
+      const compact = back.getClientRects().length > 0;
+      if (compact) back.focus();
       await refresh();
-      if (generation === selectionGeneration && !message.disabled) message.focus();
+      if (!compact && generation === selectionGeneration && !message.disabled) message.focus();
     }
   }
 

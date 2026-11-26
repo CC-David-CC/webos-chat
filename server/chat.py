@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS members (
     PRIMARY KEY (conversation, subject)
 );
 CREATE INDEX IF NOT EXISTS members_subject ON members(subject);
+CREATE TABLE IF NOT EXISTS departed_members (
+    conversation TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    PRIMARY KEY (conversation, subject),
+    FOREIGN KEY (conversation, subject) REFERENCES members(conversation, subject) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation TEXT NOT NULL,
@@ -195,6 +201,33 @@ class ChatStore:
             ((subject,) for subject in set(subjects)),
         )
 
+    def retire_account(self, subject):
+        """Remove Chat access and profile data while preserving the other member's transcript."""
+        identifier(subject, 'user:')
+        with self.connection(directory=False, write=True) as db:
+            related = db.execute(
+                '''SELECT CASE WHEN first=? THEN second ELSE first END
+                   FROM friendships WHERE first=? OR second=?''', (subject,) * 3,
+            ).fetchall()
+            peers = db.execute(
+                '''SELECT peer.conversation, peer.subject, d.subject IS NOT NULL AS departed
+                   FROM members own JOIN members peer USING(conversation)
+                   LEFT JOIN departed_members d ON d.conversation=peer.conversation AND d.subject=peer.subject
+                   WHERE own.subject=? AND peer.subject<>?''', (subject, subject),
+            ).fetchall()
+            touched = {row[0] for row in related}
+            for peer in peers:
+                if peer['departed']:
+                    db.execute('DELETE FROM conversations WHERE id=?', (peer['conversation'],))
+                else:
+                    db.execute('INSERT OR IGNORE INTO departed_members VALUES(?,?)',
+                               (peer['conversation'], subject))
+                    touched.add(peer['subject'])
+            db.execute('DELETE FROM friendships WHERE first=? OR second=?', (subject, subject))
+            db.execute('DELETE FROM profiles WHERE subject=?', (subject,))
+            db.execute('DELETE FROM updates WHERE subject=?', (subject,))
+            self.touch(db, *touched)
+
     def dispatch(self, principal, request):
         operation = request.get('operation')
         if not isinstance(operation, str) or operation not in OPERATIONS:
@@ -219,10 +252,12 @@ class ChatStore:
                 case 'direct':
                     return self.direct(db, subject, identifier(fields['peer'], 'user:'))
             conversation = identifier(fields['conversation'])
-            peer = self.conversation_peer(db, subject, conversation)
+            peer, archived = self.conversation_peer(db, subject, conversation)
             if operation == 'messages':
                 return self.messages(db, conversation, cursor(fields['after']), cursor(fields['before']))
             if operation == 'send':
+                if archived:
+                    raise Denied('This conversation is read-only.')
                 return self.send(db, subject, peer, conversation, identifier(fields['clientId']), fields['body'])
             return self.mark_read(db, subject, conversation, cursor(fields['message']))
 
@@ -239,20 +274,28 @@ class ChatStore:
             for row in related
         ]
         conversations = db.execute(
-            '''SELECT m.conversation, p.*, m.last_read,
+            '''SELECT m.conversation, peer.subject, p.username, p.display_name, m.last_read,
+                      away.subject IS NOT NULL AS archived,
                       coalesce((SELECT max(id) FROM messages WHERE conversation = m.conversation), 0) AS latest
                FROM members m
-               JOIN direct_pairs d USING (conversation)
-               JOIN people p ON p.subject = CASE WHEN d.first = ? THEN d.second ELSE d.first END
-               WHERE m.subject = ? ORDER BY latest DESC, p.username''',
-            (subject, subject),
+               JOIN members peer ON peer.conversation=m.conversation AND peer.subject<>m.subject
+               LEFT JOIN people p ON p.subject=peer.subject
+               LEFT JOIN departed_members away ON away.conversation=peer.conversation AND away.subject=peer.subject
+               WHERE m.subject=? AND (p.subject IS NOT NULL OR away.subject IS NOT NULL)
+                 AND NOT EXISTS (SELECT 1 FROM departed_members d
+                                 WHERE d.conversation=m.conversation AND d.subject=m.subject)
+               ORDER BY latest DESC, p.username''',
+            (subject,),
         )
         return {
             'me': public_person(profile),
             'revision': self.revision(db, subject),
             'contacts': contacts,
             'conversations': [
-                {'id': row['conversation'], 'peer': public_person(row), 'unread': row['latest'] > row['last_read']}
+                {'id': row['conversation'], 'unread': row['latest'] > row['last_read'],
+                 'archived': bool(row['archived']),
+                 'peer': {'subject': row['subject'], 'username': None, 'displayName': 'Former member'}
+                 if row['archived'] else public_person(row)}
                 for row in conversations
             ],
         }
@@ -344,13 +387,18 @@ class ChatStore:
     @staticmethod
     def conversation_peer(db, subject, conversation):
         row = db.execute(
-            '''SELECT p.subject FROM members m JOIN direct_pairs d USING (conversation)
-               JOIN people p ON p.subject = CASE WHEN d.first = ? THEN d.second ELSE d.first END
-               WHERE m.conversation = ? AND m.subject = ?''', (subject, conversation, subject),
+            '''SELECT peer.subject, away.subject IS NOT NULL AS archived
+               FROM members m JOIN members peer ON peer.conversation=m.conversation AND peer.subject<>m.subject
+               LEFT JOIN people p ON p.subject=peer.subject
+               LEFT JOIN departed_members away ON away.conversation=peer.conversation AND away.subject=peer.subject
+               WHERE m.conversation=? AND m.subject=? AND (p.subject IS NOT NULL OR away.subject IS NOT NULL)
+                 AND NOT EXISTS (SELECT 1 FROM departed_members d
+                                 WHERE d.conversation=m.conversation AND d.subject=m.subject)''',
+            (conversation, subject),
         ).fetchone()
         if row is None:
             raise Denied('This conversation is unavailable.')
-        return row['subject']
+        return row['subject'], bool(row['archived'])
 
     @staticmethod
     def messages(db, conversation, after, before):

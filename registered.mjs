@@ -154,6 +154,7 @@ function start(view, transport, doc, signal) {
       const name = item.peer.displayName;
       const open = button(name, () => openThread(item.id));
       open.setAttribute('aria-current', String(selected === item.id));
+      if (item.archived) open.append(text('span', 'Read-only', 'badge'));
       if (item.unread) open.append(text('span', 'Unread', 'badge'));
       return open;
     });
@@ -206,8 +207,10 @@ function start(view, transport, doc, signal) {
     conversation.hidden = !current;
     if (!current) return;
     by('#conversation-title').textContent = current.peer.displayName;
-    by('#members').textContent = '@' + current.peer.username;
-    const maySend = contact(current.peer.subject)?.relationship === 'friend';
+    by('#members').textContent = current.archived ? 'Archived conversation' : '@' + current.peer.username;
+    const maySend = !current.archived && contact(current.peer.subject)?.relationship === 'friend';
+    by('#hint').textContent = current.archived ? 'This account expired. You can still read the conversation.' :
+      'You can send direct messages to accepted friends.';
     by('#hint').hidden = maySend;
     message.disabled = !maySend;
     sendButton.disabled = !maySend || sending;

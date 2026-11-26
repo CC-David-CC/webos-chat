@@ -147,6 +147,32 @@ class RegisteredChatTest(unittest.TestCase):
         with self.assertRaises(Denied):
             self.request(replacement, 'messages', conversation=conversation, after=0, before=0)
 
+    def test_retirement_archives_for_the_survivor_and_purges_after_both_expire(self):
+        self.request(self.casey, 'display-name', name='Private name')
+        conversation = self.direct()
+        self.send(conversation, 'From the survivor')
+        self.request(self.casey, 'send', conversation=conversation, clientId=str(uuid.uuid4()), body='From the departed')
+        self.chat.retire_account(self.casey.sub)
+        self.chat.retire_account(self.casey.sub)
+        with sqlite3.connect(self.accounts_db) as db:
+            db.execute('DELETE FROM accounts WHERE subject=?', (self.casey.sub,))
+        archived = self.request(self.alex, 'snapshot')
+        self.assertEqual(archived['contacts'], [])
+        self.assertTrue(archived['conversations'][0]['archived'])
+        self.assertEqual(archived['conversations'][0]['peer']['displayName'], 'Former member')
+        history = self.request(self.alex, 'messages', conversation=conversation, after=0, before=0)
+        self.assertEqual([message['text'] for message in history['messages']], ['From the survivor', 'From the departed'])
+        with self.assertRaisesRegex(Denied, 'read-only'):
+            self.send(conversation)
+        replacement = self.register('casey')
+        self.assertEqual(self.request(replacement, 'snapshot')['conversations'], [])
+        with self.assertRaises(Denied):
+            self.request(replacement, 'messages', conversation=conversation, after=0, before=0)
+        self.chat.retire_account(self.alex.sub)
+        with self.chat.connection(directory=False) as db:
+            for table in ('conversations', 'members', 'departed_members', 'messages', 'profiles', 'friendships'):
+                self.assertEqual(db.execute(f'SELECT count(*) FROM {table}').fetchone()[0], 0)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -308,8 +308,9 @@ function start(view, transport, doc, signal) {
         let resultsChanged = false;
         const threadsChanged = JSON.stringify(previous?.conversations) !== JSON.stringify(state.conversations);
         if (threadsChanged && results && previous) {
-          const current = new Set(state.conversations.map(item => item.id));
-          const departed = new Set(previous.conversations.filter(item => !current.has(item.id)).map(item => item.peer.subject));
+          const active = new Set(state.conversations.filter(item => !item.archived).map(item => item.id));
+          const departed = new Set(previous.conversations.filter(item => !item.archived && !active.has(item.id))
+            .map(item => item.peer.subject));
           const visible = results.filter(person => !departed.has(person.subject));
           resultsChanged = visible.length !== results.length;
           results = visible;
@@ -324,6 +325,9 @@ function start(view, transport, doc, signal) {
         }
         if (resultsChanged || !previous || JSON.stringify(previous.contacts) !== JSON.stringify(state.contacts)) renderDirectory();
         renderConversation();
+        const peer = thread()?.peer;
+        const previousPeer = previous?.conversations.find(item => item.id === selected)?.peer;
+        if (loaded.length && peer && previousPeer?.displayName !== peer.displayName) renderHistory(false);
         if (selected && !loading) await readNew(selected, selectionGeneration);
       }
     })();
